@@ -12,3 +12,14 @@ void Camera::moveX(float amount)
 {
     position.x += amount;
 }
+
+// get the position of the camera
+glm::vec3 Camera::getPosition() const
+{
+    return position;
+}
+
+glm::vec3 Camera::getViewDirection() const
+{
+    return glm::normalize(position - target);
+}

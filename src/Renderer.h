@@ -2,8 +2,12 @@
 #define RENDERER_H
 
 #include <SDL2/SDL.h>
-#include <glm/glm.hpp>
 #include <vector>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
+#include "Camera.h"
+#include <iostream>
 
 enum PrimitiveType
 {
@@ -21,11 +25,12 @@ struct Vertex
 class Renderer
 {
 public:
-    Renderer(SDL_Renderer *renderer);
-    void render(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices, const glm::mat4 &mvp, PrimitiveType primitiveType = TRIANGLES, const int WINDOW_WIDTH = 500, const int WINDOW_HEIGHT = 500) const;
+    Renderer(SDL_Renderer *renderer, Camera &camera);
+    void render(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition = glm::vec3(0), PrimitiveType primitiveType = TRIANGLES, const int WINDOW_WIDTH = 500, const int WINDOW_HEIGHT = 500) const;
 
 private:
     SDL_Renderer *renderer;
+    Camera &camera;
 };
 
 #endif // RENDERER_H

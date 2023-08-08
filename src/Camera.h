@@ -10,7 +10,10 @@ public:
     Camera(const glm::vec3 &position, const glm::vec3 &target, const glm::vec3 &up);
 
     glm::mat4 getViewMatrix() const;
+    glm::vec3 getPosition() const;
     void moveX(float amount);
+
+    glm::vec3 getViewDirection() const;
 
 private:
     glm::vec3 position;
