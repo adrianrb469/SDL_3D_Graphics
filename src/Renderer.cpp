@@ -2,6 +2,13 @@
 
 float *zBuffer = new float[800 * 800];
 
+struct Triangle
+{
+    glm::vec3 v0;
+    glm::vec3 v1;
+    glm::vec3 v2;
+};
+
 glm::mat4 getViewportMatrix(const int SCREEN_WIDTH, const int SCREEN_HEIGHT)
 {
     glm::mat4 viewport = glm::mat4(1.0f);
@@ -20,6 +27,7 @@ Renderer::Renderer(SDL_Renderer *renderer, Camera &camera, int WINDOW_WIDTH, int
     viewportMatrix = getViewportMatrix(WINDOW_WIDTH, WINDOW_HEIGHT);
 }
 
+// * Transforms from object space to clip space
 glm::vec4 vertexShader(const Vertex &vertex, const glm::mat4 &mvp)
 {
     return mvp * glm::vec4(vertex.position, 1.0f);
@@ -102,36 +110,13 @@ void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b
             glm::vec2 p = glm::vec2(x, y);
             if (isInsideTriangle(a, b, c, p))
             {
-
-                // // Calculate the depth for the current pixel
-                // float depth = interpolateDepth(a, b, c, p);
-                // // Check the depth value against the Z-buffer
-                // int index = y * 800 + x; // Assuming width is 800
-                // if (depth < zBuffer[index])
-                // {
-                //     zBuffer[index] = depth;
-
-                //     // Set the color and render the pixel
-                //     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                //     SDL_RenderDrawPoint(renderer, x, y);
-                // }
-
-                // SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-
-                // yellow
-                SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+                // TODO: Z-buffering, fragment shader, texture mapping, etc.
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
                 SDL_RenderDrawPoint(renderer, x, y);
             }
         }
     }
 }
-
-struct Triangle
-{
-    glm::vec3 v0;
-    glm::vec3 v1;
-    glm::vec3 v2;
-};
 
 void Renderer::render(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition, PrimitiveType primitiveType, const int WINDOW_WIDTH, const int WINDOW_HEIGHT) const
 {
@@ -142,6 +127,7 @@ void Renderer::render(const std::vector<Vertex> &vertices, const std::vector<uns
         std::vector<Triangle> trianglesToRaster;
         for (unsigned int i = 0; i < indices.size(); i += 3)
         {
+
             // Retrieve the vertices for the current triangle
             Vertex v0 = vertices[indices[i]];
             Vertex v1 = vertices[indices[i + 1]];
@@ -152,9 +138,7 @@ void Renderer::render(const std::vector<Vertex> &vertices, const std::vector<uns
             glm::vec4 worldPosition1 = modelMatrix * glm::vec4(v1.position, 1.0f);
             glm::vec4 worldPosition2 = modelMatrix * glm::vec4(v2.position, 1.0f);
 
-            glm::vec3 normal;
-
-            normal = glm::normalize(glm::cross(glm::vec3(worldPosition1 - worldPosition0), glm::vec3(worldPosition2 - worldPosition0)));
+            glm::vec3 normal = glm::normalize(glm::cross(glm::vec3(worldPosition1 - worldPosition0), glm::vec3(worldPosition2 - worldPosition0)));
 
             // Calculate the camera view direction
             glm::vec3 viewDirection = glm::normalize(glm::vec3(worldPosition0) - camera.getPosition());
@@ -164,37 +148,45 @@ void Renderer::render(const std::vector<Vertex> &vertices, const std::vector<uns
 
             // Check if the dot product is negative (back face)
             if (dotProduct < 0.0f)
-            { // Calculate the model-view-projection matrix
+            {
+                // * --- Being overly explicit here for clarity ---
+                // Calculate the model-view-projection matrix
                 glm::mat4 mvp = projectionMatrix * viewMatrix * modelMatrix;
 
-                // Transform the vertices from 3D to 2D
-                glm::vec4 position0 = viewportMatrix * vertexShader(v0, mvp);
-                glm::vec4 position1 = viewportMatrix * vertexShader(v1, mvp);
-                glm::vec4 position2 = viewportMatrix * vertexShader(v2, mvp);
+                // Object space -> clip space
+                glm::vec4 clipPosition0 = vertexShader(v0, mvp);
+                glm::vec4 clipPosition1 = vertexShader(v1, mvp);
+                glm::vec4 clipPosition2 = vertexShader(v2, mvp);
 
-                // Apply perspective division
-                position0 /= position0.w;
-                position1 /= position1.w;
-                position2 /= position2.w;
+                // Clip space -> normalized device coordinates
+                glm::vec4 ndcPosition0 = clipPosition0 / clipPosition0.w;
+                glm::vec4 ndcPosition1 = clipPosition1 / clipPosition1.w;
+                glm::vec4 ndcPosition2 = clipPosition2 / clipPosition2.w;
 
-                glm::vec3 v0 = glm::vec3((position0.x), (position0.y), (position0.z));
-                glm::vec3 v1 = glm::vec3((position1.x), (position1.y), (position1.z));
-                glm::vec3 v2 = glm::vec3((position2.x), (position2.y), (position2.z));
+                // NDC -> screen space
+                // TODO: get viewport matrix dynamically to adjust to screen changes
+                glm::vec3 screenPosition0 = viewportMatrix * ndcPosition0;
+                glm::vec3 screenPosition1 = viewportMatrix * ndcPosition1;
+                glm::vec3 screenPosition2 = viewportMatrix * ndcPosition2;
+
+                glm::vec3 v0 = glm::vec3((screenPosition0.x), (screenPosition0.y), (screenPosition0.z));
+                glm::vec3 v1 = glm::vec3((screenPosition1.x), (screenPosition1.y), (screenPosition1.z));
+                glm::vec3 v2 = glm::vec3((screenPosition2.x), (screenPosition2.y), (screenPosition2.z));
 
                 Triangle triangle = {v0, v1, v2};
 
                 trianglesToRaster.push_back(triangle);
             }
         }
-
+        // Painter's algorithm
+        // ! Not enough, doesnt work with intersecting triangles
         std::sort(trianglesToRaster.begin(), trianglesToRaster.end(), [](Triangle &t1, Triangle &t2)
                   { return (t1.v0.z + t1.v1.z + t1.v2.z) > (t2.v0.z + t2.v1.z + t2.v2.z); });
 
         for (const auto &triangle : trianglesToRaster)
         {
-
             fillTriangle(renderer, triangle.v0, triangle.v1, triangle.v2);
-            SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 225);
             drawTriangle(renderer, triangle.v0, triangle.v1, triangle.v2);
         }
     }

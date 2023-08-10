@@ -23,6 +23,7 @@ set(SOURCES
     src/main.cpp
     src/Camera.cpp
     src/Renderer.cpp
+    src/ObjLoader.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})

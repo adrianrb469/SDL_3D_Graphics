@@ -11,16 +11,19 @@ glm::mat4 Camera::getViewMatrix() const
 void Camera::moveX(float amount)
 {
     position.x += amount;
+    target.x += amount;
 }
 
 void Camera::moveY(float amount)
 {
     position.y += amount;
+    target.y += amount;
 }
 
 void Camera::moveZ(float amount)
 {
     position.z += amount;
+    target.z += amount;
 }
 
 void Camera::setPosition(const glm::vec3 &position)

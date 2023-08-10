@@ -7,74 +7,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "Camera.h"
 #include "Renderer.h"
+#include "ObjLoader.h"
 
 // Constants
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 800;
-
-std::vector<Vertex> vertices;
-std::vector<unsigned int> indices;
-
-void load_obj_file(const char *filename)
-{
-    std::ifstream file(filename);
-    if (!file)
-    {
-        std::cerr << "Failed to open file: " << filename << std::endl;
-        return;
-    }
-
-    std::vector<glm::vec3>
-        positions;
-    std::vector<glm::vec3> normals;
-
-    std::string line;
-    while (std::getline(file, line))
-    {
-        std::istringstream iss(line);
-
-        std::string token;
-        iss >> token;
-
-        if (token == "v")
-        {
-            glm::vec3 position;
-            iss >> position.x >> position.y >> position.z;
-            positions.push_back(position);
-        }
-        else if (token == "vn")
-        {
-            glm::vec3 normal;
-            iss >> normal.x >> normal.y >> normal.z;
-            normals.push_back(normal);
-        }
-        else if (token == "f")
-        {
-            std::string indices_str[3];
-            iss >> indices_str[0] >> indices_str[1] >> indices_str[2];
-            for (int i = 0; i < 3; i++)
-            {
-                std::istringstream indices_stream(indices_str[i]);
-                std::string index_str;
-                unsigned int index[3] = {0, 0, 0}; // vertex, texture, normal
-                int j = 0;
-                while (std::getline(indices_stream, index_str, '/'))
-                {
-                    if (!index_str.empty())
-                    {
-                        index[j] = std::stoi(index_str);
-                    }
-                    j++;
-                }
-                Vertex vertex;
-                vertex.position = positions[index[0] - 1];
-                vertex.normal = normals[index[2] - 1];
-                vertices.push_back(vertex);
-                indices.push_back(indices.size());
-            }
-        }
-    }
-}
 
 int main(int argc, char *argv[])
 {
@@ -86,18 +23,23 @@ int main(int argc, char *argv[])
                                           SDL_WINDOWPOS_UNDEFINED,
                                           SDL_WINDOWPOS_UNDEFINED,
                                           WINDOW_WIDTH, WINDOW_HEIGHT, 0);
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     // Load obj file
-    load_obj_file("monkey.obj");
+    ObjLoader objLoader = ObjLoader();
+    Mesh model = objLoader.loadObjFile("penguin.obj");
+
+    // Model details
+    glm::vec3 modelPosition(0, 0, 0); // Model position in world coordinates
+    float scale = 30;                 // Model scale
 
     // Camera parameters
-    glm::vec3 cameraPosition(200, 100, 0);    // Camera position in world coordinates
+    glm::vec3 cameraPosition(200, 0, 0);      // Camera position in world coordinates
     glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f); // The point the camera is looking at
     glm::vec3 cameraUp(0.0f, -1.0f, 0.0f);    // The up vector for the camera
 
     // Perspective projection parameters
-    float fov = 90.0f;                                                                        // Field of view (in degrees)
+    float fov = 100.0f;                                                                       // Field of view (in degrees)
     float aspectRatio = static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT); // Aspect ratio (width/height)
     float nearPlane = 10.0f;                                                                  // Near clipping plane distance
     float farPlane = 500.0f;                                                                  // Far clipping plane distance
@@ -112,8 +54,7 @@ int main(int argc, char *argv[])
     // Main loop
     bool quit = false;
     float rotationAngle = 0; // Initial rotation angle
-    glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-    glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(100));
+
     while (!quit)
     {
         SDL_Event event;
@@ -128,12 +69,11 @@ int main(int argc, char *argv[])
         // change camera x with a and d
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_A])
         {
-
-            camera.moveX(5);
+            camera.moveZ(-5);
         }
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_D])
         {
-            camera.moveX(-5);
+            camera.moveZ(5);
         }
         // change camera y with w and s
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_W])
@@ -146,27 +86,27 @@ int main(int argc, char *argv[])
         }
 
         // Update the rotation angle
-        rotationAngle += 0.03f; // Adjust the rotation speed as needed
+        rotationAngle += 0.03f;
 
         // Get the view matrix from the camera (Converts world coordinates to camera coordinates)
         glm::mat4 viewMatrix = camera.getViewMatrix();
 
-        // Create model matrix (Converts model coordinates to world coordinates)
-
+        // Create model matrix
+        // (Model coordinates -> World coordinates)
+        glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), modelPosition);
+        glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scale));
         glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0, 1, 0));
-
-        glm::mat4 modelMatrix = translationMatrix * rotationMatrix * scalingMatrix;
+        glm::mat4 modelMatrix = scalingMatrix * translationMatrix * rotationMatrix;
 
         // Clear screen
-        SDL_SetRenderDrawColor(renderer, 0, 150, 150, 255);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
 
         // Render obj file with scaling and choose primitive type
-        rendererObj.render(vertices, indices, modelMatrix, viewMatrix, projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH, WINDOW_HEIGHT);
+        rendererObj.render(model.vertices, model.indices, modelMatrix, viewMatrix, projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH, WINDOW_HEIGHT);
 
         // Swap buffers
         SDL_RenderPresent(renderer);
-
         // Add a small delay to control the camera movement speed
         SDL_Delay(16); // 16 milliseconds ~ 60 FPS
     }
