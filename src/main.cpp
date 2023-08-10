@@ -89,30 +89,31 @@ int main(int argc, char *argv[])
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
 
     // Load obj file
-    load_obj_file("cube.obj");
+    load_obj_file("monkey.obj");
 
     // Camera parameters
-    glm::vec3 cameraPosition(-200, -200, 200); // Camera position in world coordinates
-    glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f);  // The point the camera is looking at
-    glm::vec3 cameraUp(0.0f, 1.0f, 0.0f);      // The up vector for the camera
+    glm::vec3 cameraPosition(200, 100, 0);    // Camera position in world coordinates
+    glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f); // The point the camera is looking at
+    glm::vec3 cameraUp(0.0f, -1.0f, 0.0f);    // The up vector for the camera
 
     // Perspective projection parameters
-    float fov = 60.0f;                                                                        // Field of view (in degrees)
+    float fov = 90.0f;                                                                        // Field of view (in degrees)
     float aspectRatio = static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT); // Aspect ratio (width/height)
-    float nearPlane = 0.05f;                                                                  // Near clipping plane distance
+    float nearPlane = 10.0f;                                                                  // Near clipping plane distance
     float farPlane = 500.0f;                                                                  // Far clipping plane distance
 
     // Create the perspective projection matrix
-    glm::mat4 projection = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
+    glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
 
     // Create camera and renderer
     Camera camera(cameraPosition, cameraTarget, cameraUp);
-    Renderer rendererObj(renderer, camera);
+    Renderer rendererObj(renderer, camera, WINDOW_WIDTH, WINDOW_HEIGHT);
 
     // Main loop
     bool quit = false;
     float rotationAngle = 0; // Initial rotation angle
-
+    glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+    glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(100));
     while (!quit)
     {
         SDL_Event event;
@@ -124,44 +125,44 @@ int main(int argc, char *argv[])
             }
         }
 
+        // change camera x with a and d
+        if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_A])
+        {
+
+            camera.moveX(5);
+        }
+        if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_D])
+        {
+            camera.moveX(-5);
+        }
+        // change camera y with w and s
+        if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_W])
+        {
+            camera.moveY(5);
+        }
+        if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_S])
+        {
+            camera.moveY(-5);
+        }
+
         // Update the rotation angle
-        rotationAngle += 0.02f; // Adjust the rotation speed as needed
+        rotationAngle += 0.03f; // Adjust the rotation speed as needed
 
-        // Move the camera along the X-axis
-        if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_LEFT])
-        {
-            camera.moveX(5.0f);
-        }
-        else if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_RIGHT])
-        {
-            camera.moveX(-5.0f);
-        }
-        else if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_R])
-        {
-            rotationAngle += 0.1;
-        }
+        // Get the view matrix from the camera (Converts world coordinates to camera coordinates)
+        glm::mat4 viewMatrix = camera.getViewMatrix();
 
-        // Get the view matrix from the camera
-        glm::mat4 view = camera.getViewMatrix();
+        // Create model matrix (Converts model coordinates to world coordinates)
 
-        // Create model matrix
-        glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
         glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0, 1, 0));
 
-        glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(50.0f));
-
-        glm::mat4 model = translationMatrix * rotationMatrix * scalingMatrix;
-
-        // Get the current window size
-        int currentWindowWidth, currentWindowHeight;
-        SDL_GetWindowSize(window, &currentWindowWidth, &currentWindowHeight);
+        glm::mat4 modelMatrix = translationMatrix * rotationMatrix * scalingMatrix;
 
         // Clear screen
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_SetRenderDrawColor(renderer, 0, 150, 150, 255);
         SDL_RenderClear(renderer);
 
         // Render obj file with scaling and choose primitive type
-        rendererObj.render(vertices, indices, model, view, projection, camera.getPosition(), TRIANGLES, currentWindowWidth, currentWindowHeight);
+        rendererObj.render(vertices, indices, modelMatrix, viewMatrix, projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH, WINDOW_HEIGHT);
 
         // Swap buffers
         SDL_RenderPresent(renderer);

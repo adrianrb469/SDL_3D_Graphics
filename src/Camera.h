@@ -12,7 +12,9 @@ public:
     glm::mat4 getViewMatrix() const;
     glm::vec3 getPosition() const;
     void moveX(float amount);
-
+    void moveY(float amount);
+    void moveZ(float amount);
+    void setPosition(const glm::vec3 &position);
     glm::vec3 getViewDirection() const;
 
 private:

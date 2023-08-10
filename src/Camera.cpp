@@ -13,6 +13,21 @@ void Camera::moveX(float amount)
     position.x += amount;
 }
 
+void Camera::moveY(float amount)
+{
+    position.y += amount;
+}
+
+void Camera::moveZ(float amount)
+{
+    position.z += amount;
+}
+
+void Camera::setPosition(const glm::vec3 &position)
+{
+    this->position = position;
+}
+
 // get the position of the camera
 glm::vec3 Camera::getPosition() const
 {
