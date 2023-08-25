@@ -1,13 +1,23 @@
 #include "Renderer.h"
 
-float *zBuffer = new float[800 * 800];
+float *zBuffer = nullptr;
+int currentWidth;
+int currentHeight;
 
-struct Triangle
+void initializeZBuffer(int width, int height)
 {
-    glm::vec3 v0;
-    glm::vec3 v1;
-    glm::vec3 v2;
-};
+    if (zBuffer != nullptr)
+    {
+        delete[] zBuffer; // Clean up the old buffer if it exists
+    }
+
+    currentWidth = width;
+    currentHeight = height;
+
+    // Allocate memory for the zBuffer based on the window size
+    zBuffer = new float[width * height];
+    std::fill_n(zBuffer, width * height, 1000);
+}
 
 glm::mat4 getViewportMatrix(const int SCREEN_WIDTH, const int SCREEN_HEIGHT)
 {
@@ -24,43 +34,50 @@ glm::mat4 getViewportMatrix(const int SCREEN_WIDTH, const int SCREEN_HEIGHT)
 
 Renderer::Renderer(SDL_Renderer *renderer, Camera &camera, int WINDOW_WIDTH, int WINDOW_HEIGHT) : renderer(renderer), camera(camera)
 {
+    initializeZBuffer(WINDOW_WIDTH, WINDOW_HEIGHT);
     viewportMatrix = getViewportMatrix(WINDOW_WIDTH, WINDOW_HEIGHT);
 }
 
 // * Transforms from object space to clip space
-glm::vec4 vertexShader(const Vertex &vertex, const glm::mat4 &mvp)
+glm::vec4 vertexShader(const glm::vec3 v, const glm::mat4 &mvp)
 {
-    return mvp * glm::vec4(vertex.position, 1.0f);
+    return mvp * glm::vec4(v, 1.0f);
+}
+
+void drawLine(SDL_Renderer *renderer, int x1, int y1, int x2, int y2)
+{
+    int dx = abs(x2 - x1);
+    int dy = abs(y2 - y1);
+    int sx = (x1 < x2) ? 1 : -1;
+    int sy = (y1 < y2) ? 1 : -1;
+    int err = dx - dy;
+
+    while (true)
+    {
+        SDL_RenderDrawPoint(renderer, x1, y1);
+
+        if (x1 == x2 && y1 == y2)
+            break;
+
+        int e2 = 2 * err;
+        if (e2 > -dy)
+        {
+            err -= dy;
+            x1 += sx;
+        }
+        if (e2 < dx)
+        {
+            err += dx;
+            y1 += sy;
+        }
+    }
 }
 
 void drawTriangle(SDL_Renderer *renderer, const glm::vec2 &a, const glm::vec2 &b, const glm::vec2 &c)
 {
-    SDL_RenderDrawLine(renderer, a.x, a.y, b.x, b.y);
-    SDL_RenderDrawLine(renderer, b.x, b.y, c.x, c.y);
-    SDL_RenderDrawLine(renderer, c.x, c.y, a.x, a.y);
-}
-
-bool isInsideTriangle(const glm::vec2 a, const glm::vec2 b, const glm::vec2 c, const glm::vec2 p)
-{
-    // Compute vectors
-    glm::vec2 v0 = c - a;
-    glm::vec2 v1 = b - a;
-    glm::vec2 v2 = p - a;
-
-    // Compute dot products
-    float dot00 = glm::dot(v0, v0);
-    float dot01 = glm::dot(v0, v1);
-    float dot02 = glm::dot(v0, v2);
-    float dot11 = glm::dot(v1, v1);
-    float dot12 = glm::dot(v1, v2);
-
-    // Compute barycentric coordinates
-    float invDenom = 1.0f / (dot00 * dot11 - dot01 * dot01);
-    float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
-    float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
-
-    // Check if point is in triangle
-    return (u >= 0) && (v >= 0) && (u + v < 1);
+    drawLine(renderer, static_cast<int>(a.x), static_cast<int>(a.y), static_cast<int>(b.x), static_cast<int>(b.y));
+    drawLine(renderer, static_cast<int>(b.x), static_cast<int>(b.y), static_cast<int>(c.x), static_cast<int>(c.y));
+    drawLine(renderer, static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(a.x), static_cast<int>(a.y));
 }
 
 glm::vec3 calculateBarycentricCoordinates(const glm::vec2 &a, const glm::vec2 &b, const glm::vec2 &c, const glm::vec2 &p)
@@ -77,11 +94,24 @@ glm::vec3 calculateBarycentricCoordinates(const glm::vec2 &a, const glm::vec2 &b
 
     float denom = d00 * d11 - d01 * d01;
 
+    // Define an epsilon value (small threshold) to account for numerical imprecision
+    float epsilon = 1e-5; // Adjust as needed
+
     float beta = (d11 * d20 - d01 * d21) / denom;
     float gamma = (d00 * d21 - d01 * d20) / denom;
     float alpha = 1.0f - beta - gamma;
 
-    return glm::vec3(alpha, beta, gamma);
+    // Check if the barycentric coordinates are within [0 - epsilon, 1 + epsilon] range
+    if (alpha >= -epsilon && beta >= -epsilon && gamma >= -epsilon &&
+        alpha <= 1.0f + epsilon && beta <= 1.0f + epsilon && gamma <= 1.0f + epsilon)
+    {
+        return glm::vec3(alpha, beta, gamma);
+    }
+    else
+    {
+        // Point is outside the triangle or very close to an edge; return a special value or handle as needed
+        return glm::vec3(-1.0f); // For example, return a value that indicates it's outside the triangle
+    }
 }
 
 float interpolateDepth(const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c, const glm::vec2 &p)
@@ -96,51 +126,76 @@ float interpolateDepth(const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &
     return interpolatedPosition;
 }
 
-void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c)
+void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c, const glm::vec3 &normal)
 {
-    int minX = std::min(a.x, std::min(b.x, c.x));
-    int maxX = std::max(a.x, std::max(b.x, c.x));
-    int minY = std::min(a.y, std::min(b.y, c.y));
-    int maxY = std::max(a.y, std::max(b.y, c.y));
-
+    int minX = std::min(static_cast<int>(a.x), std::min(static_cast<int>(b.x), static_cast<int>(c.x)));
+    int maxX = std::max(static_cast<int>(a.x), std::max(static_cast<int>(b.x), static_cast<int>(c.x)));
+    int minY = std::min(static_cast<int>(a.y), std::min(static_cast<int>(b.y), static_cast<int>(c.y)));
+    int maxY = std::max(static_cast<int>(a.y), std::max(static_cast<int>(b.y), static_cast<int>(c.y)));
+    if (maxX < 0 || maxY < 0 || minX >= currentWidth || minY >= currentHeight)
+    {
+        return;
+    }
     for (int y = minY; y <= maxY; ++y)
     {
         for (int x = minX; x <= maxX; ++x)
         {
             glm::vec2 p = glm::vec2(x, y);
-            if (isInsideTriangle(a, b, c, p))
+            glm::vec3 baryCoords = calculateBarycentricCoordinates(a, b, c, p);
+
+            if (baryCoords.x >= 0 && baryCoords.y >= 0 && baryCoords.z >= 0)
             {
-                // TODO: Z-buffering, fragment shader, texture mapping, etc.
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                SDL_RenderDrawPoint(renderer, x, y);
+                int bufferIndex = y * currentWidth + x;
+
+                float interpolatedDepth = baryCoords.x * a.z + baryCoords.y * b.z + baryCoords.z * c.z;
+
+                if (interpolatedDepth < zBuffer[bufferIndex])
+                {
+                    zBuffer[bufferIndex] = interpolatedDepth;
+
+                    glm::vec3 lightDirection = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f));
+                    float intensity = glm::dot(normal, lightDirection);
+                    if (intensity < 0.0001)
+                    {
+                        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                        SDL_RenderDrawPoint(renderer, x, y);
+                        continue;
+                    }
+
+                    SDL_SetRenderDrawColor(renderer, 255 * intensity, 255 * intensity, 255 * intensity, 255);
+                    SDL_RenderDrawPoint(renderer, x, y);
+                }
             }
         }
     }
 }
 
-void Renderer::render(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition, PrimitiveType primitiveType, const int WINDOW_WIDTH, const int WINDOW_HEIGHT) const
+void Renderer::render(const std::vector<Triangle> model, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition, PrimitiveType primitiveType, const int WINDOW_WIDTH, const int WINDOW_HEIGHT) const
 {
-    std::fill_n(zBuffer, 800 * 800, std::numeric_limits<float>::max());
+    initializeZBuffer(WINDOW_WIDTH, WINDOW_HEIGHT);
+    glm::mat4 mvp = projectionMatrix * viewMatrix * modelMatrix;
+
+    currentWidth = WINDOW_WIDTH;
+    currentHeight = WINDOW_HEIGHT;
 
     if (primitiveType == TRIANGLES)
     {
         std::vector<Triangle> trianglesToRaster;
-        for (unsigned int i = 0; i < indices.size(); i += 3)
+        std::vector<glm::vec3> normals;
+        for (const auto &triangle : model)
         {
-
-            // Retrieve the vertices for the current triangle
-            Vertex v0 = vertices[indices[i]];
-            Vertex v1 = vertices[indices[i + 1]];
-            Vertex v2 = vertices[indices[i + 2]];
+            glm::vec3 v0 = triangle.vertices[0];
+            glm::vec3 v1 = triangle.vertices[1];
+            glm::vec3 v2 = triangle.vertices[2];
 
             // Convert to world space
-            glm::vec4 worldPosition0 = modelMatrix * glm::vec4(v0.position, 1.0f);
-            glm::vec4 worldPosition1 = modelMatrix * glm::vec4(v1.position, 1.0f);
-            glm::vec4 worldPosition2 = modelMatrix * glm::vec4(v2.position, 1.0f);
+            glm::vec4 worldPosition0 = modelMatrix * glm::vec4(v0, 1.0f);
+            glm::vec4 worldPosition1 = modelMatrix * glm::vec4(v1, 1.0f);
+            glm::vec4 worldPosition2 = modelMatrix * glm::vec4(v2, 1.0f);
 
             glm::vec3 normal = glm::normalize(glm::cross(glm::vec3(worldPosition1 - worldPosition0), glm::vec3(worldPosition2 - worldPosition0)));
 
-            // Calculate the camera view direction
+            //  Calculate the camera view direction
             glm::vec3 viewDirection = glm::normalize(glm::vec3(worldPosition0) - camera.getPosition());
 
             // Calculate the dot product between the normal and view direction
@@ -149,22 +204,18 @@ void Renderer::render(const std::vector<Vertex> &vertices, const std::vector<uns
             // Check if the dot product is negative (back face)
             if (dotProduct < 0.0f)
             {
-                // * --- Being overly explicit here for clarity ---
-                // Calculate the model-view-projection matrix
-                glm::mat4 mvp = projectionMatrix * viewMatrix * modelMatrix;
-
-                // Object space -> clip space
+                // object space -> clip space
                 glm::vec4 clipPosition0 = vertexShader(v0, mvp);
                 glm::vec4 clipPosition1 = vertexShader(v1, mvp);
                 glm::vec4 clipPosition2 = vertexShader(v2, mvp);
 
-                // Clip space -> normalized device coordinates
+                // clip space -> normalized device coordinates
                 glm::vec4 ndcPosition0 = clipPosition0 / clipPosition0.w;
                 glm::vec4 ndcPosition1 = clipPosition1 / clipPosition1.w;
                 glm::vec4 ndcPosition2 = clipPosition2 / clipPosition2.w;
 
                 // NDC -> screen space
-                // TODO: get viewport matrix dynamically to adjust to screen changes
+                glm::mat4 viewportMatrix = getViewportMatrix(WINDOW_WIDTH, WINDOW_HEIGHT);
                 glm::vec3 screenPosition0 = viewportMatrix * ndcPosition0;
                 glm::vec3 screenPosition1 = viewportMatrix * ndcPosition1;
                 glm::vec3 screenPosition2 = viewportMatrix * ndcPosition2;
@@ -175,19 +226,53 @@ void Renderer::render(const std::vector<Vertex> &vertices, const std::vector<uns
 
                 Triangle triangle = {v0, v1, v2};
 
+                normals.push_back(normal);
                 trianglesToRaster.push_back(triangle);
             }
         }
-        // Painter's algorithm
-        // ! Not enough, doesnt work with intersecting triangles
-        std::sort(trianglesToRaster.begin(), trianglesToRaster.end(), [](Triangle &t1, Triangle &t2)
-                  { return (t1.v0.z + t1.v1.z + t1.v2.z) > (t2.v0.z + t2.v1.z + t2.v2.z); });
 
+        int i = 0;
         for (const auto &triangle : trianglesToRaster)
         {
-            fillTriangle(renderer, triangle.v0, triangle.v1, triangle.v2);
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 225);
-            drawTriangle(renderer, triangle.v0, triangle.v1, triangle.v2);
+
+            glm::vec3 lightDirection = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f));
+            float intensity = glm::dot(normals[i], lightDirection);
+            /*
+            Faster but doesn't work, because I don't know how to implement depth testing with this. fuck
+                      uint8_t col;
+
+                      if (intensity < 0.0015)
+                      {
+                          intensity = 0;
+                      }
+
+                      col = 255 * intensity;
+
+
+
+                          SDL_Vertex verts[3] =
+                          {
+                              {
+                                  {triangle.vertices[0].x, triangle.vertices[0].y},
+                                  SDL_Color{col, col, col, 255},
+                                  SDL_FPoint{0},
+                              },
+                              {
+                                  {triangle.vertices[1].x, triangle.vertices[1].y},
+                                  SDL_Color{col, col, col, 255},
+                                  SDL_FPoint{0},
+                              },
+                              {
+                                  {triangle.vertices[2].x, triangle.vertices[2].y},
+                                  SDL_Color{col, col, col, 255},
+                                  SDL_FPoint{0},
+                              },
+                          };
+                      SDL_RenderGeometry(renderer, nullptr, verts, 3, nullptr, 0);
+                      */
+
+            fillTriangle(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2], normals[i]);
+            i++;
         }
     }
 

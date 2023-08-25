@@ -9,7 +9,6 @@
 #include "Renderer.h"
 #include "ObjLoader.h"
 
-// Constants
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 800;
 
@@ -25,38 +24,38 @@ int main(int argc, char *argv[])
                                           WINDOW_WIDTH, WINDOW_HEIGHT, 0);
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
-    // Load obj file
     ObjLoader objLoader = ObjLoader();
-    Mesh model = objLoader.loadObjFile("penguin.obj");
+    std::vector<Triangle> model = objLoader.loadObjFile("spaceship.obj");
 
-    // Model details
-    glm::vec3 modelPosition(0, 0, 0); // Model position in world coordinates
-    float scale = 30;                 // Model scale
+    glm::vec3 modelPosition(0, 0, 0);
+    float scale = 6;
 
-    // Camera parameters
-    glm::vec3 cameraPosition(200, 0, 0);      // Camera position in world coordinates
-    glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f); // The point the camera is looking at
-    glm::vec3 cameraUp(0.0f, -1.0f, 0.0f);    // The up vector for the camera
+    glm::vec3 cameraPosition(200, 0, 0);
+    glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f);
+    glm::vec3 cameraUp(0.0f, -1.0f, 0.0f);
 
-    // Perspective projection parameters
-    float fov = 100.0f;                                                                       // Field of view (in degrees)
-    float aspectRatio = static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT); // Aspect ratio (width/height)
-    float nearPlane = 10.0f;                                                                  // Near clipping plane distance
-    float farPlane = 500.0f;                                                                  // Far clipping plane distance
+    float fov = 50.0f;
+    float aspectRatio = static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT);
+    float nearPlane = 0.1f;
+    float farPlane = 100.0f;
 
-    // Create the perspective projection matrix
     glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
 
     // Create camera and renderer
     Camera camera(cameraPosition, cameraTarget, cameraUp);
-    Renderer rendererObj(renderer, camera, WINDOW_WIDTH, WINDOW_HEIGHT);
+    Renderer rendererObj(renderer, camera, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
 
     // Main loop
     bool quit = false;
     float rotationAngle = 0; // Initial rotation angle
 
+    int frameStart, frameTime;
+    std::string title = "FPS: ";
+    SDL_RenderSetLogicalSize(renderer, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
     while (!quit)
     {
+
+        frameStart = SDL_GetTicks();
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
@@ -66,7 +65,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        // change camera x with a and d
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_A])
         {
             camera.moveZ(-5);
@@ -75,7 +73,6 @@ int main(int argc, char *argv[])
         {
             camera.moveZ(5);
         }
-        // change camera y with w and s
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_W])
         {
             camera.moveY(5);
@@ -85,25 +82,27 @@ int main(int argc, char *argv[])
             camera.moveY(-5);
         }
 
-        // Update the rotation angle
         rotationAngle += 0.03f;
 
-        // Get the view matrix from the camera (Converts world coordinates to camera coordinates)
         glm::mat4 viewMatrix = camera.getViewMatrix();
 
-        // Create model matrix
-        // (Model coordinates -> World coordinates)
         glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), modelPosition);
         glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scale));
         glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0, 1, 0));
         glm::mat4 modelMatrix = scalingMatrix * translationMatrix * rotationMatrix;
 
-        // Clear screen
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // Render obj file with scaling and choose primitive type
-        rendererObj.render(model.vertices, model.indices, modelMatrix, viewMatrix, projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH, WINDOW_HEIGHT);
+        rendererObj.render(model, modelMatrix, viewMatrix, projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+
+        frameTime = SDL_GetTicks() - frameStart;
+
+        if (frameTime > 0)
+        {
+            title = "FPS: " + std::to_string(1000 / frameTime);
+            SDL_SetWindowTitle(window, title.c_str());
+        }
 
         // Swap buffers
         SDL_RenderPresent(renderer);

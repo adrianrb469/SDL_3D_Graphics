@@ -13,7 +13,7 @@ class ObjLoader
 {
 public:
     ObjLoader();
-    Mesh loadObjFile(const char *filename);
+    std::vector<Triangle> loadObjFile(const char *filename);
 
 private:
 };
