@@ -15,6 +15,8 @@ public:
     void moveY(float amount);
     void moveZ(float amount);
     void setPosition(const glm::vec3 &position);
+    void rotateLeft(float angle);
+    void rotateRight(float angle);
     glm::vec3 getViewDirection() const;
 
 private:

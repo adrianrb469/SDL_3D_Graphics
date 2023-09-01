@@ -25,10 +25,10 @@ int main(int argc, char *argv[])
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     ObjLoader objLoader = ObjLoader();
-    std::vector<Triangle> model = objLoader.loadObjFile("model.obj");
+    std::vector<Triangle> model = objLoader.loadObjFile("monkey.obj");
 
     glm::vec3 modelPosition(0, 0, 0);
-    float scale = 6;
+    float scale = 60;
 
     glm::vec3 cameraPosition(200, 0, 0);
     glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f);
@@ -53,6 +53,9 @@ int main(int argc, char *argv[])
     std::string title = "FPS: ";
 
     bool wireframe = false;
+
+    int prevMouseX, prevMouseY;
+
     while (!quit)
     {
 
@@ -77,22 +80,30 @@ int main(int argc, char *argv[])
 
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_A])
         {
-            camera.moveZ(-5);
+            camera.moveX(5);
         }
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_D])
         {
-            camera.moveZ(5);
+            camera.moveX(-5);
         }
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_W])
         {
-            camera.moveX(-5);
+            camera.moveZ(5);
         }
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_S])
         {
-            camera.moveX(5);
+            camera.moveZ(-5);
+        }
+        if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_LEFT])
+        {
+            camera.rotateLeft(5.0f);
+        }
+        if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_RIGHT])
+        {
+            camera.rotateRight(5.0f);
         }
 
-        rotationAngle += 0.03f;
+        rotationAngle += 0.0f;
 
         glm::mat4 viewMatrix = camera.getViewMatrix();
 

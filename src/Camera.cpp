@@ -12,20 +12,25 @@ glm::mat4 Camera::getViewMatrix() const
 
 void Camera::moveX(float amount)
 {
-    position.x += amount;
-    target.x += amount;
+    glm::vec3 right = glm::normalize(glm::cross(up, target - position));
+    glm::vec3 moveVector = right * amount;
+    position += moveVector;
+    target += moveVector;
 }
 
 void Camera::moveY(float amount)
 {
-    position.y += amount;
-    target.y += amount;
+    glm::vec3 moveVector = up * amount;
+    position += moveVector;
+    target += moveVector;
 }
 
 void Camera::moveZ(float amount)
 {
-    position.z += amount;
-    target.z += amount;
+    glm::vec3 viewDirection = glm::normalize(target - position);
+    glm::vec3 moveVector = viewDirection * amount;
+    position += moveVector;
+    target += moveVector;
 }
 
 void Camera::setPosition(const glm::vec3 &position)
@@ -42,4 +47,20 @@ glm::vec3 Camera::getPosition() const
 glm::vec3 Camera::getViewDirection() const
 {
     return glm::normalize(position - target);
+}
+
+void Camera::rotateLeft(float angle)
+{
+    glm::vec3 direction = glm::normalize(target - position);
+    glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(angle), up);
+    direction = glm::vec3(rotationMatrix * glm::vec4(direction, 1.0f));
+    target = position + direction;
+}
+
+void Camera::rotateRight(float angle)
+{
+    glm::vec3 direction = glm::normalize(target - position);
+    glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(-angle), up);
+    direction = glm::vec3(rotationMatrix * glm::vec4(direction, 1.0f));
+    target = position + direction;
 }
