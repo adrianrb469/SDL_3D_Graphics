@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     ObjLoader objLoader = ObjLoader();
-    std::vector<Triangle> model = objLoader.loadObjFile("spaceship.obj");
+    std::vector<Triangle> model = objLoader.loadObjFile("model.obj");
 
     glm::vec3 modelPosition(0, 0, 0);
     float scale = 6;
@@ -36,14 +36,14 @@ int main(int argc, char *argv[])
 
     float fov = 50.0f;
     float aspectRatio = static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT);
-    float nearPlane = 0.1f;
+    float nearPlane = 1;
     float farPlane = 100.0f;
 
     glm::mat4 projectionMatrix = glm::perspective(glm::radians(fov), aspectRatio, nearPlane, farPlane);
 
     // Create camera and renderer
     Camera camera(cameraPosition, cameraTarget, cameraUp);
-    Renderer rendererObj(renderer, camera, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+    Renderer rendererObj(renderer, camera, WINDOW_WIDTH, WINDOW_HEIGHT);
 
     // Main loop
     bool quit = false;
@@ -51,7 +51,8 @@ int main(int argc, char *argv[])
 
     int frameStart, frameTime;
     std::string title = "FPS: ";
-    SDL_RenderSetLogicalSize(renderer, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+
+    bool wireframe = false;
     while (!quit)
     {
 
@@ -62,6 +63,15 @@ int main(int argc, char *argv[])
             if (event.type == SDL_QUIT)
             {
                 quit = true;
+            }
+            // check if 1 key is pressed and toggle wireframe
+            if (event.type == SDL_KEYDOWN)
+            {
+                if (event.key.keysym.sym == SDLK_1)
+                {
+                    wireframe = !wireframe;
+                    std::cout << "Wireframe: " << wireframe << "\n";
+                }
             }
         }
 
@@ -75,26 +85,26 @@ int main(int argc, char *argv[])
         }
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_W])
         {
-            camera.moveY(5);
+            camera.moveX(-5);
         }
         if (SDL_GetKeyboardState(NULL)[SDL_SCANCODE_S])
         {
-            camera.moveY(-5);
+            camera.moveX(5);
         }
 
         rotationAngle += 0.03f;
 
         glm::mat4 viewMatrix = camera.getViewMatrix();
 
-        glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), modelPosition);
-        glm::mat4 scalingMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scale));
-        glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0, 1, 0));
-        glm::mat4 modelMatrix = scalingMatrix * translationMatrix * rotationMatrix;
+        glm::mat4 translation = glm::translate(glm::mat4(1.0f), modelPosition);
+        glm::mat4 scaling = glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+        glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0, 1, 0));
+        glm::mat4 modelMatrix = scaling * rotation * translation;
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        rendererObj.render(model, modelMatrix, viewMatrix, projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+        rendererObj.render(model, modelMatrix, camera.getViewMatrix(), projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH, WINDOW_HEIGHT, wireframe);
 
         frameTime = SDL_GetTicks() - frameStart;
 
@@ -103,11 +113,8 @@ int main(int argc, char *argv[])
             title = "FPS: " + std::to_string(1000 / frameTime);
             SDL_SetWindowTitle(window, title.c_str());
         }
-
-        // Swap buffers
         SDL_RenderPresent(renderer);
-        // Add a small delay to control the camera movement speed
-        SDL_Delay(16); // 16 milliseconds ~ 60 FPS
+        SDL_Delay(1000 / 60);
     }
 
     // Cleanup

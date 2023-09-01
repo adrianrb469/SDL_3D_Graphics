@@ -21,7 +21,7 @@ std::vector<Triangle> ObjLoader::loadObjFile(const char *filename)
         return tris;
     }
 
-    std::vector<glm::vec3> positions;
+    std::vector<glm::vec4> positions;
     std::vector<glm::vec3> normals;
 
     std::string line;
@@ -33,7 +33,7 @@ std::vector<Triangle> ObjLoader::loadObjFile(const char *filename)
 
         if (token == "v")
         {
-            glm::vec3 position;
+            glm::vec4 position;
             iss >> position.x >> position.y >> position.z;
             positions.push_back(position);
         }

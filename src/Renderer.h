@@ -23,7 +23,7 @@ struct Vertex
 
 struct Triangle
 {
-    glm::vec3 vertices[3];
+    glm::vec4 vertices[3];
     glm::vec3 normal;
 };
 
@@ -31,7 +31,7 @@ class Renderer
 {
 public:
     Renderer(SDL_Renderer *renderer, Camera &camera, const int WINDOW_WIDTH, const int WINDOW_HEIGHT);
-    void render(std::vector<Triangle> model, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition = glm::vec3(0), PrimitiveType primitiveType = TRIANGLES, const int WINDOW_WIDTH = 500, const int WINDOW_HEIGHT = 500) const;
+    void render(std::vector<Triangle> model, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition = glm::vec3(0), PrimitiveType primitiveType = TRIANGLES, const int WINDOW_WIDTH = 500, const int WINDOW_HEIGHT = 500, bool wireframe = false) const;
 
 private:
     SDL_Renderer *renderer;
