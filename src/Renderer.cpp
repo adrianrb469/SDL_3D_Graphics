@@ -1,4 +1,8 @@
 #include "Renderer.h"
+#include <glm/gtc/noise.hpp>
+#include <random>
+#include "FastNoiseLite.h"
+#include <chrono>
 
 float *zBuffer = nullptr;
 Uint32 *framebuffer = nullptr;
@@ -108,25 +112,7 @@ void drawTrianleSDL(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 
     SDL_RenderDrawLine(renderer, static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(a.x), static_cast<int>(a.y));
 }
 
-glm::vec3 getBarycentricCoords(const glm::vec2 &a, const glm::vec2 &b, const glm::vec2 &c, const glm::vec2 &p)
-{
-    glm::vec2 v0 = b - a;
-    glm::vec2 v1 = c - a;
-    glm::vec2 v2 = p - a;
-
-    float d00 = glm::dot(v0, v0);
-    float d01 = glm::dot(v0, v1);
-    float d11 = glm::dot(v1, v1);
-    float d20 = glm::dot(v2, v0);
-    float d21 = glm::dot(v2, v1);
-    float det = d00 * d11 - d01 * d01;
-    float v = (d11 * d20 - d01 * d21) / det;
-    float w = (d00 * d21 - d01 * d20) / det;
-    float u = 1.0f - v - w;
-    return glm::vec3(u, v, w);
-}
-
-float edge_cross(glm::vec2 a, glm::vec2 b, glm::vec2 p)
+float edgeCross(glm::vec2 a, glm::vec2 b, glm::vec2 p)
 {
     glm::vec2 ab = {b.x - a.x, b.y - a.y};
     glm::vec2 ap = {p.x - a.x, p.y - a.y};
@@ -140,6 +126,16 @@ bool is_top_left(glm::vec2 start, glm::vec2 end)
     bool is_left_edge = edge.y < 0;
     return is_left_edge || is_top_edge;
 }
+
+struct Fragment
+{
+    glm::vec2 position;
+    glm::vec3 normal;
+    glm::vec3 color;
+    glm::vec3 original;
+    float intensity;
+    glm::vec2 uv; // Add UV coordinates
+};
 
 void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c, const glm::vec3 &normal)
 {
@@ -156,7 +152,7 @@ void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b
         return;
     }
 
-    float area = edge_cross(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y), glm::vec2(c.x, c.y));
+    float area = edgeCross(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y), glm::vec2(c.x, c.y));
 
     float delta_w0_col = (b.y - c.y);
     float delta_w1_col = (c.y - a.y);
@@ -170,13 +166,13 @@ void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b
     float bias2 = is_top_left(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y)) ? 0 : -0.000001;
 
     glm::vec2 p = glm::vec2(minX, minY);
-    float w0_row = edge_cross(glm::vec2(b.x, b.y), glm::vec2(c.x, c.y), p) + bias0;
-    float w1_row = edge_cross(glm::vec2(c.x, c.y), glm::vec2(a.x, a.y), p) + bias1;
-    float w2_row = edge_cross(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y), p) + bias2;
+    float w0_row = edgeCross(glm::vec2(b.x, b.y), glm::vec2(c.x, c.y), p) + bias0;
+    float w1_row = edgeCross(glm::vec2(c.x, c.y), glm::vec2(a.x, a.y), p) + bias1;
+    float w2_row = edgeCross(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y), p) + bias2;
 
     SDL_PixelFormat *pixelFormat = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
 
-    glm::vec3 lightDirection = glm::normalize(glm::vec3(0, 1.0f, 1.0f));
+    glm::vec3 lightDirection = glm::normalize(glm::vec3(1, 0, 1.0f));
     float intensity = glm::dot(normal, lightDirection);
 
     for (int y = minY; y <= maxY; ++y)
@@ -219,7 +215,110 @@ void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b
     }
 }
 
-void Renderer::render(const std::vector<Triangle> model, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition, PrimitiveType primitiveType, const int WINDOW_WIDTH, const int WINDOW_HEIGHT, bool wireframe) const
+std::vector<Fragment> rasterizeTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c, const glm::vec3 &normal, const glm::vec3 *original, const glm::vec3 *vertexNormals)
+{
+
+    std::vector<Fragment> fragments;
+    int minX = std::min(std::min(a.x, b.x), c.x);
+    int minY = std::min(std::min(a.y, b.y), c.y);
+    int maxX = std::max(std::max(a.x, b.x), c.x);
+    int maxY = std::max(std::max(a.y, b.y), c.y);
+
+    float epsilon = 1e-6;
+
+    if (maxX < 0 || maxY < 0 || minX >= currentWidth || minY >= currentHeight)
+    {
+        return fragments;
+    }
+
+    glm::vec2 p = glm::vec2(minX, minY);
+
+    float area = edgeCross(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y), glm::vec2(c.x, c.y));
+
+    if (area < epsilon)
+        return fragments;
+
+    float delta_w0_col = (b.y - c.y);
+    float delta_w1_col = (c.y - a.y);
+    float delta_w2_col = (a.y - b.y);
+    float delta_w0_row = (c.x - b.x);
+    float delta_w1_row = (a.x - c.x);
+    float delta_w2_row = (b.x - a.x);
+
+    float bias0 = is_top_left(glm::vec2(b.x, b.y), glm::vec2(c.x, c.y)) ? 0 : -0.000001;
+    float bias1 = is_top_left(glm::vec2(c.x, c.y), glm::vec2(a.x, a.y)) ? 0 : -0.000001;
+    float bias2 = is_top_left(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y)) ? 0 : -0.000001;
+
+    float w0_row = edgeCross(glm::vec2(b.x, b.y), glm::vec2(c.x, c.y), p) + bias0;
+    float w1_row = edgeCross(glm::vec2(c.x, c.y), glm::vec2(a.x, a.y), p) + bias1;
+    float w2_row = edgeCross(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y), p) + bias2;
+
+    SDL_PixelFormat *pixelFormat = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
+
+    glm::vec3 lightDirection = glm::normalize(glm::vec3(0, 1, 1.0f));
+
+    for (int y = static_cast<int>(std::ceil(minY)); y <= static_cast<int>(std::floor(maxY)); ++y)
+    {
+        float w0 = w0_row;
+        float w1 = w1_row;
+        float w2 = w2_row;
+
+        for (int x = static_cast<int>(std::ceil(minX)); x <= static_cast<int>(std::floor(maxX)); ++x)
+        {
+            int bufferIndex = y * currentWidth + x;
+            glm::vec2 p = glm::vec2(x, y);
+
+            if (w0 >= epsilon && w1 >= epsilon && w2 >= epsilon)
+            {
+
+                Fragment fragment;
+
+                float u = w0 / area;
+                float v = w1 / area;
+                float w = w2 / area;
+
+                fragment.uv = glm::vec2(u, v);
+
+                float newZ = u * a.z + v * b.z + w * c.z;
+
+                float oldZ = zBuffer[bufferIndex];
+
+                if (newZ > oldZ)
+                    continue;
+
+                glm::vec3 normal_a = vertexNormals[0];
+                glm::vec3 normal_b = vertexNormals[1];
+                glm::vec3 normal_c = vertexNormals[2];
+
+                glm::vec3 interpolatedNormal = glm::normalize(u * normal_a + v * normal_b + w * normal_c);
+
+                float intensity = glm::dot(interpolatedNormal, lightDirection);
+
+                // clamp intensity
+                intensity = fminf(fmaxf(intensity, 0.0), 1.0);
+
+                zBuffer[bufferIndex] = newZ;
+
+                fragment.position = glm::vec2(x, y);
+                fragment.normal = normal;
+                fragment.original = u * original[0] + v * original[1] + w * original[2];
+                fragment.intensity = intensity;
+
+                fragment.color = glm::vec3(intensity * 255, intensity * 255, intensity * 255);
+                fragments.push_back(fragment);
+            }
+            w0 += delta_w0_col;
+            w1 += delta_w1_col;
+            w2 += delta_w2_col;
+        }
+        w0_row += delta_w0_row;
+        w1_row += delta_w1_row;
+        w2_row += delta_w2_row;
+    }
+    return fragments;
+}
+
+void Renderer::render(const int frameTime, const std::vector<Triangle> model, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition, PrimitiveType primitiveType, const int WINDOW_WIDTH, const int WINDOW_HEIGHT, bool wireframe) const
 {
 
     glm::mat4 mvp = projectionMatrix * viewMatrix * modelMatrix;
@@ -232,6 +331,7 @@ void Renderer::render(const std::vector<Triangle> model, const glm::mat4 &modelM
     {
         std::vector<Triangle> trianglesToRaster;
         std::vector<glm::vec3> normals;
+        std::vector<glm::vec3> worldPositions;
 
         for (const auto &triangle : model)
         {
@@ -259,6 +359,10 @@ void Renderer::render(const std::vector<Triangle> model, const glm::mat4 &modelM
             glm::vec4 clipPosition1 = vertexShader(v1, mvp);
             glm::vec4 clipPosition2 = vertexShader(v2, mvp);
 
+            // clip triangle against near plane
+            if (clipPosition0.z < 0 || clipPosition1.z < 0 || clipPosition2.z < 0)
+                continue;
+
             // clip space -> normalized device coordinates
             glm::vec4 ndcPosition0 = clipPosition0 / clipPosition0.w;
             glm::vec4 ndcPosition1 = clipPosition1 / clipPosition1.w;
@@ -273,48 +377,14 @@ void Renderer::render(const std::vector<Triangle> model, const glm::mat4 &modelM
             glm::vec4 b = glm::vec4((screenPosition1.x), (screenPosition1.y), (screenPosition1.z), (screenPosition1.w));
             glm::vec4 c = glm::vec4((screenPosition2.x), (screenPosition2.y), (screenPosition2.z), (screenPosition2.w));
 
-            trianglesToRaster.push_back({{a, b, c}, normal});
+            trianglesToRaster.push_back({.vertices = {a, b, c},
+                                         .normal = normal,
+                                         .original = {v0, v1, v2},
+                                         .vertexNormals = {triangle.vertexNormals[0], triangle.vertexNormals[1], triangle.vertexNormals[2]}});
         }
-
-        // std::sort(trianglesToRaster.begin(), trianglesToRaster.end(), [](const Triangle &t1, const Triangle &t2)
-        //           {
-        //     float z1 = (t1.vertices[0].z + t1.vertices[1].z + t1.vertices[2].z) / 3.0f;
-        //     float z2 = (t2.vertices[0].z + t2.vertices[1].z + t2.vertices[2].z) / 3.0f;
-        //     return z1 > z2; });
-
+        std::vector<Fragment> fragments;
         for (const auto &triangle : trianglesToRaster)
         {
-
-            // glm::vec3 lightDirection = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f));
-            // float intensity = glm::dot(triangle.normal, lightDirection);
-
-            // uint8_t col;
-
-            // if (intensity < 0.0015)
-            // {
-            //     intensity = 0;
-            // }
-
-            // col = 255 * intensity;
-
-            // SDL_Vertex verts[3] =
-            //     {
-            //         {
-            //             {triangle.vertices[0].x, triangle.vertices[0].y},
-            //             SDL_Color{col, col, col, 255},
-            //             SDL_FPoint{0},
-            //         },
-            //         {
-            //             {triangle.vertices[1].x, triangle.vertices[1].y},
-            //             SDL_Color{col, col, col, 255},
-            //             SDL_FPoint{0},
-            //         },
-            //         {
-            //             {triangle.vertices[2].x, triangle.vertices[2].y},
-            //             SDL_Color{col, col, col, 255},
-            //             SDL_FPoint{0},
-            //         },
-            //     };
 
             if (wireframe == true)
             {
@@ -323,14 +393,264 @@ void Renderer::render(const std::vector<Triangle> model, const glm::mat4 &modelM
             }
             else
             {
-                fillTriangle(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2], triangle.normal);
+                // fillTriangle(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2], triangle.normal);
+
+                std::vector<Fragment> rasterizedTriangle = rasterizeTriangle(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2], triangle.normal, triangle.original, triangle.vertexNormals);
+                fragments.insert(fragments.end(), rasterizedTriangle.begin(), rasterizedTriangle.end());
+            }
+        }
+
+        SDL_PixelFormat *pixelFormat = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
+        /*
+        for (const auto &fragment : fragments)
+        {
+            float intensity = fragment.intensity;
+
+            glm::vec3 groundColor = glm::vec3(112, 130, 84);
+            glm::vec3 groudColor2 = glm::vec3(247, 133, 46);
+            glm::vec3 oceanColor = glm::vec3(31, 97, 145);
+            glm::vec3 cloudColor = glm::vec3(255, 255, 255);
+
+            glm::vec2 uv = glm::vec2(fragment.original);
+
+            FastNoiseLite noiseGenerator;
+            noiseGenerator.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+
+            FastNoiseLite noiseGenerator2;
+            noiseGenerator2.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
+
+            float ox = 1000.0f;
+            float oy = 1000.0f;
+            float zoom = 300.0f;
+
+            float noiseValue = noiseGenerator.GetNoise((uv.x + ox) * zoom, (uv.y + oy) * zoom);
+
+            float oxg = 5500.0f;
+            float oyg = 6900.0f;
+            float zoomg = 200.0f;
+
+            float noiseValueG = noiseGenerator2.GetNoise((uv.x + oxg) * zoomg, (uv.y + oyg) * zoomg);
+
+            glm::vec3 tmpColor;
+            if (noiseValue < 0.5f)
+            {
+                tmpColor = oceanColor;
+            }
+            else
+            {
+                tmpColor = groundColor;
+                if (noiseValueG < 0.1f)
+                {
+                    float t = (noiseValueG + 1.0f) * 0.5f; // Map [-1, 1] to [0, 1]
+                    tmpColor = glm::mix(groundColor, groudColor2, t);
+                }
             }
 
-            // SDL_RenderGeometry(renderer, nullptr, verts, 3, nullptr, 0);
+            float oxc = 5500.0f;
+            float oyc = 6900.0f;
+            float zoomc = 300.0f;
 
-            // draw_filled_triangle(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2], triangle.normal);
+            float noiseValueC = noiseGenerator.GetNoise((uv.x + oxc) * zoomc, (uv.y + oyc) * zoomc);
 
-            // drawTrianleSDL(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2]);
+            if (noiseValueC > 0.5f)
+            {
+                float t = (noiseValueC - 0.5f) * 2.0f; // Map [-1, 1] to [0, 1]
+                tmpColor = glm::mix(tmpColor, cloudColor, t);
+            }
+
+            // Set the pixel with the modified color
+            setFramebufferPixel(fragment.position.x, fragment.position.y, SDL_MapRGBA(pixelFormat, tmpColor.x * intensity, tmpColor.y * intensity, tmpColor.z * intensity, 255));
+        }
+        */
+
+        /*
+                for (const auto &fragment : fragments)
+                {
+                    float intensity = fragment.intensity;
+
+                    glm::vec3 hotColor = glm::vec3(240, 145, 0);
+
+                    glm::vec3 tmpColor;
+
+                    glm::vec2 uv = glm::vec2(fragment.original);
+
+                    FastNoiseLite noiseGenerator;
+
+                    noiseGenerator.SetNoiseType(FastNoiseLite::NoiseType_ValueCubic);
+
+                    float ox = 2000;
+                    float oy = 0;
+                    float zoom = 2000.0f;
+
+                    float noiseValue = noiseGenerator.GetNoise((uv.x + ox + zoom) * zoom, (uv.y + oy) * zoom);
+                    noiseGenerator.SetFrequency(0.08);
+
+                    float zoom2 = 1000.0f;
+
+                    float noiseValue2 = noiseGenerator.GetNoise((uv.x + ox) * zoom2, (uv.y + oy) * zoom2);
+
+                    if (noiseValue < -0.3f)
+
+                    {
+                        tmpColor = glm::vec3(0, 0, 0);
+                    }
+                    else
+                    {
+
+                        tmpColor = glm::vec3(240, 12, 0);
+
+                        if (noiseValue2 < 0)
+                        {
+                            tmpColor = glm::vec3(100, 0, 0);
+                        }
+
+                        if (noiseValue2 < -0.5f)
+                        {
+                            tmpColor = hotColor;
+                        }
+                    }
+
+                    // Set the pixel with the modified color
+                    setFramebufferPixel(fragment.position.x, fragment.position.y, SDL_MapRGBA(pixelFormat, tmpColor.x * noiseValue2, tmpColor.y * noiseValue2, tmpColor.z * noiseValue2, 255));
+                }
+                */
+        /*
+                for (const auto &fragment : fragments)
+                {
+                    float intensity = fragment.intensity;
+
+                    glm::vec3 hotColor = glm::vec3(240, 145, 0);
+
+                    glm::vec3 tmpColor;
+
+                    glm::vec2 uv = glm::vec2(fragment.original);
+
+                    FastNoiseLite noiseGenerator;
+
+                    noiseGenerator.SetNoiseType(FastNoiseLite::NoiseType_Cellular);
+
+                    float ox = 2000;
+                    float oy = 10000;
+                    float zoom = 500.0f;
+
+                    tmpColor = glm::vec3(20, 20, 240);
+
+                    float noiseValue = noiseGenerator.GetNoise((uv.x + ox + zoom) * zoom, (uv.y + oy) * zoom);
+                    tmpColor = glm::vec3(20, 20 * noiseValue * -1, 240 * noiseValue * -1);
+
+                    // Set the pixel with the modified color
+                    setFramebufferPixel(fragment.position.x, fragment.position.y, SDL_MapRGBA(pixelFormat, tmpColor.x * intensity, tmpColor.y * intensity, tmpColor.z * intensity, 255));
+                }
+                */
+        /*
+        for (const auto &fragment : fragments)
+        {
+            float intensity = fragment.intensity;
+
+            glm::vec3 hotColor = glm::vec3(240, 145, 0);
+
+            glm::vec3 tmpColor;
+
+            glm::vec2 uv = glm::vec2(fragment.original);
+
+            FastNoiseLite noiseGenerator;
+
+            noiseGenerator.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2S);
+
+            float ox = 2000;
+            float oy = 10000;
+            float zoom = 500.0f;
+
+            tmpColor = glm::vec3(20, 20, 240);
+
+            float noiseValue = noiseGenerator.GetNoise((uv.x + ox + zoom) * zoom, (uv.y + oy) * zoom);
+            tmpColor = glm::vec3(100, SDL_clamp(200 * noiseValue * 0.7, 0, 255), SDL_clamp(240 * noiseValue, 0, 255));
+
+            if (noiseValue < 0.2f)
+            {
+                tmpColor = glm::vec3(225, SDL_clamp(100 * noiseValue, 0, 255), SDL_clamp(200 * noiseValue * -1, 0, 255));
+            }
+
+            // Set the pixel with the modified color
+            setFramebufferPixel(fragment.position.x, fragment.position.y, SDL_MapRGBA(pixelFormat, tmpColor.x * intensity, tmpColor.y * intensity, tmpColor.z * intensity, 255));
+        }
+        */
+
+        /*
+        for (const auto &fragment : fragments)
+        {
+            float intensity = fragment.intensity;
+
+            glm::vec3 hotColor = glm::vec3(240, 145, 0);
+
+            glm::vec3 tmpColor;
+
+            glm::vec2 uv = glm::vec2(fragment.original);
+
+            FastNoiseLite noiseGenerator;
+
+            noiseGenerator.SetNoiseType(FastNoiseLite::NoiseType_Value);
+
+            float ox = 2000;
+            float oy = 10000;
+            float zoom = 1500.0f;
+
+            tmpColor = glm::vec3(20, 20, 100);
+
+            float noiseValue = noiseGenerator.GetNoise((uv.x + ox + zoom) * zoom, (uv.y + oy) * zoom);
+            tmpColor = glm::vec3(100, SDL_clamp(200 * noiseValue * 0.9, 0, 255), SDL_clamp(150 * noiseValue, 0, 255));
+
+            if (noiseValue < 0.1f)
+            {
+                tmpColor = glm::vec3(45, SDL_clamp(100 * noiseValue, 0, 255), SDL_clamp(200 * noiseValue * -1, 51, 255));
+            }
+
+            // Set the pixel with the modified color
+            setFramebufferPixel(fragment.position.x, fragment.position.y, SDL_MapRGBA(pixelFormat, tmpColor.x * intensity, tmpColor.y * intensity, tmpColor.z * intensity, 255));
+        }
+        */
+
+        for (const auto &fragment : fragments)
+        {
+            float intensity = fragment.intensity;
+
+            glm::vec3 hotColor = glm::vec3(240, 145, 0);
+
+            glm::vec3 tmpColor;
+
+            glm::vec2 uv = glm::vec2(fragment.original);
+
+            FastNoiseLite noiseGenerator;
+
+            noiseGenerator.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2S);
+
+            float ox = 2000;
+            float oy = 10000;
+            float zoom = 1500.0f;
+
+            tmpColor = glm::vec3(20, 20, 100);
+
+            float noiseValue = noiseGenerator.GetNoise((uv.x + ox + zoom) * zoom, (uv.y + oy) * zoom);
+            tmpColor = glm::vec3(100, SDL_clamp(200 * noiseValue * 0.9, 0, 255), SDL_clamp(150 * noiseValue, 0, 255));
+
+            if (noiseValue < 0.5f)
+            {
+                tmpColor = glm::vec3(255, SDL_clamp(100 * noiseValue, 0, 255), SDL_clamp(200 * noiseValue * 2, 51, 255));
+            }
+
+            float ox2 = 2000;
+            float oy2 = 10000;
+            float zoom2 = 1500.0f;
+
+            float noiseValue2 = noiseGenerator.GetNoise((uv.x + ox2 + zoom2) * zoom2, (uv.y + oy2) * zoom2);
+
+            if (noiseValue2 < 0.1f)
+            {
+                tmpColor = glm::vec3(45, SDL_clamp(125 * noiseValue2, 0, 255), SDL_clamp(200 * noiseValue2 * -1, 51, 255));
+            }
+
+            // Set the pixel with the modified color
+            setFramebufferPixel(fragment.position.x, fragment.position.y, SDL_MapRGBA(pixelFormat, tmpColor.x * intensity, tmpColor.y * intensity, tmpColor.z * intensity, 255));
         }
 
         SDL_UpdateTexture(texture, NULL, framebuffer, WINDOW_WIDTH * sizeof(Uint32));

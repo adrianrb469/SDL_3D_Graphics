@@ -7,7 +7,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# find and include SDL2, SDL_image, and GLM
+# Enable OpenMP
+find_package(OpenMP REQUIRED)
+
+# Find and include SDL2, SDL_image, and GLM
 find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIRS})
 
@@ -33,5 +36,5 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${PROJECT_SOURCE_DIR}/src
 )
 
-# link libraries
-target_link_libraries(${PROJECT_NAME} ${SDL2_LIBRARIES} ${GLM_LIBRARIES})
+# Link libraries
+target_link_libraries(${PROJECT_NAME} ${SDL2_LIBRARIES} ${GLM_LIBRARIES} OpenMP::OpenMP_CXX)

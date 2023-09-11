@@ -23,6 +23,7 @@ std::vector<Triangle> ObjLoader::loadObjFile(const char *filename)
 
     std::vector<glm::vec4> positions;
     std::vector<glm::vec3> normals;
+    std::vector<glm::vec2> textureCoords; // Add a container for texture coordinates
 
     std::string line;
     while (std::getline(file, line))
@@ -43,6 +44,12 @@ std::vector<Triangle> ObjLoader::loadObjFile(const char *filename)
             iss >> normal.x >> normal.y >> normal.z;
             normals.push_back(normal);
         }
+        else if (token == "vt")
+        {
+            glm::vec2 texCoord;
+            iss >> texCoord.x >> texCoord.y;
+            textureCoords.push_back(texCoord);
+        }
         else if (token == "f")
         {
             std::vector<std::string> faceData;
@@ -62,43 +69,13 @@ std::vector<Triangle> ObjLoader::loadObjFile(const char *filename)
                 getline(faceStream, textureIndexStr, '/');
                 getline(faceStream, normalIndexStr, '/');
 
-                // Parse vertex, texture, and normal indices (1-based in Blender OBJs)
-                int vertexIndex = std::stoi(vertexIndexStr);
-                int textureIndex = std::stoi(textureIndexStr);
-                int normalIndex = std::stoi(normalIndexStr);
+                int vertexIndex = std::stoi(vertexIndexStr) - 1;   // Convert to 0-based index
+                int textureIndex = std::stoi(textureIndexStr) - 1; // Convert to 0-based index
+                int normalIndex = std::stoi(normalIndexStr) - 1;   // Convert to 0-based index
 
-                // Handle negative indices relative to the end of the lists
-                if (vertexIndex < 0)
-                {
-                    vertexIndex = positions.size() + vertexIndex;
-                }
-                else
-                {
-                    vertexIndex--; // Convert to 0-based index
-                }
-
-                if (textureIndex < 0)
-                {
-                    // textureIndex = textureCoords.size() + textureIndex;
-                }
-                else
-                {
-                    textureIndex--; // Convert to 0-based index
-                }
-
-                if (normalIndex < 0)
-                {
-                    normalIndex = normals.size() + normalIndex;
-                }
-                else
-                {
-                    normalIndex--; // Convert to 0-based index
-                }
-
-                // Populate the triangle's vertex and normal data
                 triangle.vertices[i] = positions[vertexIndex];
-                // triangle.textureCoords[i] = textureCoords[textureIndex];
-                triangle.normal = normals[normalIndex];
+                // triangle.textureCoords[i] = textureCoords[textureIndex]; // Assign texture coordinates
+                triangle.vertexNormals[i] = normals[normalIndex]; // Assign normals to vertices
             }
             tris.push_back(triangle);
         }

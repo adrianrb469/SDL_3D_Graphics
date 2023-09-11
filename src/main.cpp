@@ -25,10 +25,13 @@ int main(int argc, char *argv[])
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     ObjLoader objLoader = ObjLoader();
-    std::vector<Triangle> model = objLoader.loadObjFile("monkey.obj");
+    std::vector<std::vector<Triangle>> models;
+
+    std::vector<Triangle> model = objLoader.loadObjFile("sphere2.obj");
+    models.push_back(model);
 
     glm::vec3 modelPosition(0, 0, 0);
-    float scale = 60;
+    float scale = 10;
 
     glm::vec3 cameraPosition(200, 0, 0);
     glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f);
@@ -103,7 +106,7 @@ int main(int argc, char *argv[])
             camera.rotateRight(5.0f);
         }
 
-        rotationAngle += 0.0f;
+        rotationAngle += 0.02f;
 
         glm::mat4 viewMatrix = camera.getViewMatrix();
 
@@ -115,7 +118,7 @@ int main(int argc, char *argv[])
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        rendererObj.render(model, modelMatrix, camera.getViewMatrix(), projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH, WINDOW_HEIGHT, wireframe);
+        rendererObj.render(SDL_GetTicks(), model, modelMatrix, camera.getViewMatrix(), projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH, WINDOW_HEIGHT, wireframe);
 
         frameTime = SDL_GetTicks() - frameStart;
 
