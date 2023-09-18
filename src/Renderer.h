@@ -29,11 +29,43 @@ struct Triangle
     glm::vec3 vertexNormals[3];
 };
 
+struct Uniforms
+{
+    std::vector<Triangle> model;
+    glm::mat4 modelMatrix;
+    glm::mat4 viewMatrix;
+    glm::mat4 projectionMatrix;
+    PrimitiveType primitiveType;
+};
+
+struct RenderParams
+{
+    std::vector<Uniforms> uniforms;
+    glm::vec3 cameraPosition;
+    PrimitiveType primitiveType;
+    int WINDOW_WIDTH;
+    int WINDOW_HEIGHT;
+    bool wireframe;
+};
+
+// struct RenderParams
+// {
+//     std::vector<std::vector<Triangle>> models;
+//     glm::mat4 modelMatrix;
+//     glm::mat4 viewMatrix;
+//     glm::mat4 projectionMatrix;
+//     glm::vec3 cameraPosition;
+//     PrimitiveType primitiveType;
+//     int WINDOW_WIDTH;
+//     int WINDOW_HEIGHT;
+//     bool wireframe;
+// };
+
 class Renderer
 {
 public:
     Renderer(SDL_Renderer *renderer, Camera &camera, const int WINDOW_WIDTH, const int WINDOW_HEIGHT);
-    void render(int frameTime, std::vector<Triangle> model, const glm::mat4 &modelMatrix, const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 cameraPosition = glm::vec3(0), PrimitiveType primitiveType = TRIANGLES, const int WINDOW_WIDTH = 500, const int WINDOW_HEIGHT = 500, bool wireframe = false) const;
+    void render(const RenderParams &params) const;
 
 private:
     SDL_Renderer *renderer;

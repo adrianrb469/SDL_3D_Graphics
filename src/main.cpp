@@ -1,6 +1,5 @@
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <vector>
 #include <SDL2/SDL.h>
 #include <glm/glm.hpp>
@@ -25,12 +24,14 @@ int main(int argc, char *argv[])
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
     ObjLoader objLoader = ObjLoader();
-    std::vector<std::vector<Triangle>> models;
+    std::vector<Uniforms> uniforms;
 
     std::vector<Triangle> model = objLoader.loadObjFile("sphere2.obj");
-    models.push_back(model);
+    std::vector<Triangle> model2 = objLoader.loadObjFile("monkey.obj");
 
     glm::vec3 modelPosition(0, 0, 0);
+    glm::vec3 modelPosition2(1, 1, 0);
+
     float scale = 10;
 
     glm::vec3 cameraPosition(200, 0, 0);
@@ -115,10 +116,38 @@ int main(int argc, char *argv[])
         glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0, 1, 0));
         glm::mat4 modelMatrix = scaling * rotation * translation;
 
+        glm::mat4 translation2 = glm::translate(glm::mat4(1.0f), modelPosition2);
+        glm::mat4 scaling2 = glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+        glm::mat4 rotation2 = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(1, 1, 1));
+        glm::mat4 modelMatrix2 = scaling2 * rotation2 * translation2;
+
+        uniforms.push_back(Uniforms{
+            model,
+            modelMatrix,
+            viewMatrix,
+            projectionMatrix,
+            TRIANGLES});
+
+        uniforms.push_back(Uniforms{
+            model2,
+            modelMatrix2,
+            viewMatrix,
+            projectionMatrix,
+            TRIANGLES});
+
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        rendererObj.render(SDL_GetTicks(), model, modelMatrix, camera.getViewMatrix(), projectionMatrix, camera.getPosition(), TRIANGLES, WINDOW_WIDTH, WINDOW_HEIGHT, wireframe);
+        RenderParams renderParams = {
+            uniforms,
+            cameraPosition,
+            TRIANGLES,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+            wireframe};
+
+        rendererObj.render(renderParams);
+        uniforms.clear();
 
         frameTime = SDL_GetTicks() - frameStart;
 
