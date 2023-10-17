@@ -71,7 +71,7 @@ Fragment Shader::earthShader(const Fragment &fragment) const
         fragment.uv};
 }
 
-Fragment Shader::sunShader(const Fragment &fragment) const
+Fragment Shader::uranusShader(const Fragment &fragment) const
 {
     float intensity = fragment.intensity;
 
@@ -96,6 +96,48 @@ Fragment Shader::sunShader(const Fragment &fragment) const
 
     tmpColor = glm::vec3(tmpColor.x * intensity, tmpColor.y * intensity, tmpColor.z * intensity);
 
+    return Fragment{
+        fragment.position,
+        fragment.normal,
+        tmpColor,
+        fragment.original,
+        intensity,
+        fragment.uv};
+}
+
+Fragment Shader::sunShader(const Fragment &fragment) const
+{
+    float intensity = fragment.intensity;
+
+    glm::vec3 hotColor = glm::vec3(200, 145, 100);
+
+    glm::vec3 tmpColor;
+
+    glm::vec2 uv = glm::vec2(fragment.original);
+
+    FastNoiseLite noiseGenerator;
+
+    noiseGenerator.SetNoiseType(FastNoiseLite::NoiseType_ValueCubic);
+
+    float ox = 2000;
+    float oy = 0;
+    float zoom = 200.0f;
+
+    float noiseValue = noiseGenerator.GetNoise((uv.x + ox + zoom) * zoom, (uv.y + oy) * zoom);
+    noiseGenerator.SetFrequency(0.08);
+
+    float zoom2 = 1000.0f;
+
+    float noiseValue2 = noiseGenerator.GetNoise((uv.x + ox) * zoom2, (uv.y + oy) * zoom2);
+
+    tmpColor = glm::vec3(240, 100, 0);
+
+    if (noiseValue2 < 0)
+    {
+        tmpColor = glm::vec3(100, 0, 0);
+    }
+
+    // Set the pixel with the modified color
     return Fragment{
         fragment.position,
         fragment.normal,

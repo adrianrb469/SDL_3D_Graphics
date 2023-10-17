@@ -10,14 +10,35 @@ Uint32 *framebuffer = nullptr;
 int currentWidth;
 int currentHeight;
 
+int NOISE_MAP_WIDTH;
+int NOISE_MAP_HEIGHT;
+std::vector<float> noiseMap;
+
 SDL_Texture *texture = nullptr;
 
 void initializeBuffers(int width, int height)
 {
 
+    NOISE_MAP_WIDTH = width;
+    NOISE_MAP_HEIGHT = height;
+    noiseMap = std::vector<float>(NOISE_MAP_WIDTH * NOISE_MAP_HEIGHT);
+    FastNoiseLite noiseGenerator;
+    noiseGenerator.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+
     // Allocate memory for the zBuffer based on the window size
     zBuffer = new float[width * height];
     std::fill_n(zBuffer, width * height, 9999);
+    float ox = 2000;
+    float oy = 0;
+    // Precompute the noise map
+    for (int y = 0; y < NOISE_MAP_HEIGHT; y++)
+    {
+        for (int x = 0; x < NOISE_MAP_WIDTH; x++)
+        {
+            float scale = 1000.0f;
+            noiseMap[y * NOISE_MAP_WIDTH + x] = noiseGenerator.GetNoise((x + (ox * 100.0f)) * scale, (y + oy * 100.0f) * scale);
+        }
+    }
 
     framebuffer = new Uint32[width * height];
     std::fill_n(framebuffer, width * height, SDL_MapRGBA(SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888), 0, 0, 0, 255));
@@ -164,7 +185,7 @@ void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b
 
     SDL_PixelFormat *pixelFormat = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
 
-    glm::vec3 lightDirection = glm::normalize(glm::vec3(1, 0, 1.0f));
+    glm::vec3 lightDirection = glm::normalize(glm::vec3(0, 0, 1));
     float intensity = glm::dot(normal, lightDirection);
 
     for (int y = minY; y <= maxY; ++y)
@@ -195,7 +216,9 @@ void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b
                 int clampedIntensity = static_cast<int>(fminf(fmaxf(intensity, 0.0), 1.0) * 255);
 
                 zBuffer[bufferIndex] = newZ;
-                setFramebufferPixel(x, y, SDL_MapRGBA(pixelFormat, clampedIntensity, clampedIntensity, clampedIntensity, 255));
+                // setFramebufferPixel(x, y, SDL_MapRGBA(pixelFormat, clampedIntensity, clampedIntensity, clampedIntensity, 255));
+                SDL_SetRenderDrawColor(renderer, clampedIntensity, clampedIntensity, clampedIntensity, 255);
+                SDL_RenderDrawPoint(renderer, x, y);
             }
             w0 += delta_w0_col;
             w1 += delta_w1_col;
@@ -207,7 +230,7 @@ void fillTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b
     }
 }
 
-std::vector<Fragment> rasterizeTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c, const glm::vec3 &normal, const glm::vec3 *original, const glm::vec3 *vertexNormals)
+std::vector<Fragment> rasterizeTriangle(SDL_Renderer *renderer, const glm::vec3 &a, const glm::vec3 &b, const glm::vec3 &c, const glm::vec3 &normal, const glm::vec3 *original, const glm::vec3 *vertexNormals, const glm::vec3 &modelPosition)
 {
 
     std::vector<Fragment> fragments;
@@ -217,7 +240,7 @@ std::vector<Fragment> rasterizeTriangle(SDL_Renderer *renderer, const glm::vec3 
     int maxX = std::max(std::max(a.x, b.x), c.x);
     int maxY = std::max(std::max(a.y, b.y), c.y);
 
-    float epsilon = 1e-6;
+    float epsilon = 1e-7;
 
     if (maxX < 0 || maxY < 0 || minX >= currentWidth || minY >= currentHeight)
     {
@@ -238,9 +261,9 @@ std::vector<Fragment> rasterizeTriangle(SDL_Renderer *renderer, const glm::vec3 
     float delta_w1_row = (a.x - c.x);
     float delta_w2_row = (b.x - a.x);
 
-    float bias0 = is_top_left(glm::vec2(b.x, b.y), glm::vec2(c.x, c.y)) ? 0 : -0.00001;
-    float bias1 = is_top_left(glm::vec2(c.x, c.y), glm::vec2(a.x, a.y)) ? 0 : -0.00001;
-    float bias2 = is_top_left(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y)) ? 0 : -0.00001;
+    float bias0 = is_top_left(glm::vec2(b.x, b.y), glm::vec2(c.x, c.y)) ? 0 : -0.0000001;
+    float bias1 = is_top_left(glm::vec2(c.x, c.y), glm::vec2(a.x, a.y)) ? 0 : -0.0000001;
+    float bias2 = is_top_left(glm::vec2(a.x, a.y), glm::vec2(b.x, b.y)) ? 0 : -0.0000001;
 
     float w0_row = edgeCross(glm::vec2(b.x, b.y), glm::vec2(c.x, c.y), p) + bias0;
     float w1_row = edgeCross(glm::vec2(c.x, c.y), glm::vec2(a.x, a.y), p) + bias1;
@@ -248,7 +271,17 @@ std::vector<Fragment> rasterizeTriangle(SDL_Renderer *renderer, const glm::vec3 
 
     SDL_PixelFormat *pixelFormat = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
 
-    glm::vec3 lightDirection = glm::normalize(glm::vec3(0, 1, 1.0f));
+    glm::vec3 lightDirection;
+
+    if (modelPosition == glm::vec3(0, 0, 0))
+        lightDirection = glm::normalize(glm::vec3(1, 1, 1));
+    else
+        lightDirection = glm::normalize(glm::vec3(0, -1, 1));
+
+    // if (modelPosition == glm::vec3(0, 0, 0))
+    //     lightDirection = glm::normalize(glm::vec3(0, -1, 0));
+    // else
+    //     lightDirection = glm::normalize(modelPosition);
 
     for (int y = static_cast<int>(std::ceil(minY)); y <= static_cast<int>(std::floor(maxY)); ++y)
     {
@@ -319,9 +352,23 @@ void Renderer::render(const RenderParams &params) const
     int WINDOW_WIDTH = params.WINDOW_WIDTH;
     int WINDOW_HEIGHT = params.WINDOW_HEIGHT;
     bool wireframe = params.wireframe;
+    SDL_SetRenderDrawColor(renderer, 130, 130, 130, 255);
 
+    for (int y = 0; y < WINDOW_HEIGHT; y++)
+    {
+        for (int x = 0; x < WINDOW_WIDTH; x++)
+        {
+            float noiseValue = noiseMap[y * NOISE_MAP_WIDTH + x];
+            if (noiseValue > 0.97f)
+            {
+                SDL_RenderDrawPoint(renderer, x, y);
+            }
+        }
+    }
     for (const auto &uniform : params.uniforms)
     {
+        glm::vec3 modelPosition = uniform.modelPosition;
+        int shaderType = uniform.shader;
         std::vector<Triangle> model = uniform.model;
         glm::mat4 modelMatrix = uniform.modelMatrix;
         glm::mat4 viewMatrix = uniform.viewMatrix;
@@ -398,7 +445,7 @@ void Renderer::render(const RenderParams &params) const
                 {
                     // fillTriangle(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2], triangle.normal);
 
-                    std::vector<Fragment> rasterizedTriangle = rasterizeTriangle(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2], triangle.normal, triangle.original, triangle.vertexNormals);
+                    std::vector<Fragment> rasterizedTriangle = rasterizeTriangle(renderer, triangle.vertices[0], triangle.vertices[1], triangle.vertices[2], triangle.normal, triangle.original, triangle.vertexNormals, modelPosition);
                     fragments.insert(fragments.end(), rasterizedTriangle.begin(), rasterizedTriangle.end());
                 }
             }
@@ -407,12 +454,35 @@ void Renderer::render(const RenderParams &params) const
 
             Shader shader = Shader();
 
-            for (const auto &fragment : fragments)
+            if (shaderType == 1)
             {
+                for (const auto &fragment : fragments)
+                {
 
-                Fragment shadedFragment = fragment;
-                SDL_SetRenderDrawColor(renderer, shadedFragment.color.r, shadedFragment.color.g, shadedFragment.color.b, 255);
-                SDL_RenderDrawPoint(renderer, static_cast<int>(fragment.position.x), static_cast<int>(fragment.position.y));
+                    Fragment shadedFragment = shader.sunShader(fragment);
+                    SDL_SetRenderDrawColor(renderer, shadedFragment.color.r, shadedFragment.color.g, shadedFragment.color.b, 255);
+                    SDL_RenderDrawPoint(renderer, static_cast<int>(fragment.position.x), static_cast<int>(fragment.position.y));
+                }
+            }
+            else if (shaderType == 2)
+            {
+                for (const auto &fragment : fragments)
+                {
+
+                    Fragment shadedFragment = shader.uranusShader(fragment);
+                    SDL_SetRenderDrawColor(renderer, shadedFragment.color.r, shadedFragment.color.g, shadedFragment.color.b, 255);
+                    SDL_RenderDrawPoint(renderer, static_cast<int>(fragment.position.x), static_cast<int>(fragment.position.y));
+                }
+            }
+            else
+            {
+                for (const auto &fragment : fragments)
+                {
+
+                    Fragment shadedFragment = shader.earthShader(fragment);
+                    SDL_SetRenderDrawColor(renderer, shadedFragment.color.r, shadedFragment.color.g, shadedFragment.color.b, 255);
+                    SDL_RenderDrawPoint(renderer, static_cast<int>(fragment.position.x), static_cast<int>(fragment.position.y));
+                }
             }
 
             // SDL_UpdateTexture(texture, NULL, framebuffer, WINDOW_WIDTH * sizeof(Uint32));
@@ -422,11 +492,9 @@ void Renderer::render(const RenderParams &params) const
 
         else if (primitiveType == LINES)
         {
-            // ... Render lines, as before ...
         }
         else if (primitiveType == POINTS)
         {
-            // ... Render points, as before ...
         }
     }
 

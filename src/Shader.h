@@ -20,6 +20,8 @@ public:
     Shader();
     glm::vec3 fragment(Fragment fragments) const;
     Fragment earthShader(const Fragment &fragment) const;
+    Fragment uranusShader(const Fragment &fragment) const;
+
     Fragment sunShader(const Fragment &fragment) const;
 
 private:
