@@ -36,3 +36,9 @@ Below you will find examples in increasing complexity both to showcase the rende
 ## Solar System Displaying All Features
 
   <video src="https://github.com/adrianrb469/SDL_3D_Graphics/assets/68407469/41bfc911-9f95-4126-8100-cabfd231fc34"></video>
+
+[Criterio Subjetivo] 30 Puntos por la estética de su sistema completo <br>
+[Criterio Subjetivo] 20 Puntos por el performance de la escena completa. No es necesario mantener 60 frames por segundo, es suficiente con que se sienta apropiado.  (En promedio tiene 60-70 fps) <br>
+10 Puntos por cada planeta / estrella / luna en el sistema. Para un máximo de 50 puntos. <b>50/50</b> <br>
+40 puntos por implementar movimiento 3D para la cámara <b>40/40</b> <br>
+Total: 90 + criterios subjetivos
