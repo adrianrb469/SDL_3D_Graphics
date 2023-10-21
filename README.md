@@ -1,13 +1,23 @@
 # SDL_3D_Graphics
-Implementation of 3D Graphics using SDL2 and C++
+This project is a demonstration of 3D graphics rendering using SDL2 and C++. It provides a simple example of how to create a 3D environment, render objects, and interact with them in real-time. It serves as a demonstration
+for the software rendering pipeline.
 
-SR 1 <br>
+Below you will find examples in increasing complexity both to showcase the renderer and to serve as a timeline on the progress.
+
+## Features 🚀
+
+- 3D Graphics Rendering
+- Object Loading and Rendering
+- Camera and User Interaction
+- Lambert lighting and basic fragment shading
+  
+## Wireframe rendering 
 ![image](https://github.com/adrianrb469/SDL_3D_Graphics/assets/68407469/caa223ce-fe66-4562-90fc-1da84ddbf73f)
 
-SR 2 <br>
+## Flat shading
 ![image](https://github.com/adrianrb469/SDL_3D_Graphics/assets/68407469/21d3ea90-e40b-430c-8d50-423e7c5ab18b)
 
-Shaders (Lab 4) <br>
+## Lambert shading + cool shaders 
 <table>
   <tr>
     <td><img width="400" height="400" src="https://github.com/adrianrb469/SDL_3D_Graphics/assets/68407469/17bc45e8-590f-45ba-a4fd-b5ed8e4dfaeb" alt="Image 1"></td>
@@ -23,3 +33,6 @@ Shaders (Lab 4) <br>
   </tr>
 </table>
 
+## Solar System Displaying All Features
+
+  <video src="https://github.com/adrianrb469/SDL_3D_Graphics/assets/68407469/41bfc911-9f95-4126-8100-cabfd231fc34"></video>
